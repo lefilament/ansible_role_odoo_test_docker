@@ -1,0 +1,50 @@
+version: "2.1"
+services:
+    restore_test:
+        image: tecnativa/duplicity:postgres
+        hostname: backup-odoo
+        environment:
+{% if odoo_prod is defined %}
+            DST: "swift://odoo_{{ inventory_hostname|lower }}"
+{% else %}
+            DST: "swift://odoo_{{ item.prod_inv_name|lower }}"
+{% endif %}
+            PGDATABASE: "{{ item.db }}"
+            PGUSER: "{{ item.db_user }}"
+            PGPASSWORD: "{{ item.db_pass }}"
+{% if odoo_prod is defined %}
+            PASSPHRASE: "{{ odoo_prod.master_pass }}"
+{% else %}
+            PASSPHRASE: "{{ hostvars[item.prod_inv_name].odoo_prod.master_pass }}"
+{% endif %}
+            SWIFT_USERNAME: "{{ swift_odoo_username }}"
+            SWIFT_PASSWORD: "{{ swift_odoo_password }}"
+            SWIFT_AUTHURL: "{{ swift_odoo_authurl }}"
+            SWIFT_AUTHVERSION: {{ swift_odoo_authversion }}
+            SWIFT_TENANTNAME: "{{ swift_odoo_tenantname }}"
+            SWIFT_TENANTID: "{{ swift_odoo_tenantid }}"
+            SWIFT_REGIONNAME: "{{ swift_odoo_regionname }}"
+            OPTIONS: "--force"
+        volumes:
+            - {{ item.dir }}_filestore:/mnt/backup/src/odoo:z
+            - ./post_restore-{{ item.name }}.sql:/tmp/post-restore.sql:ro
+            - ./pre_restore-{{ item.name }}.sql:/tmp/pre-restore.sql:ro
+        networks:
+            - {{ item.dir }}_default
+            - public
+{% if odoo_prod is defined %}
+        command: [sh, -c, "psql -a -f /tmp/pre-restore.sql postgres ; echo 'remove existing dir' && rm -rf /mnt/backup/src/odoo/filestore/$$PGDATABASE && restore && echo 'move repo to final dest' && mv /mnt/backup/src/odoo/filestore/{{ odoo_prod.db }} /mnt/backup/src/odoo/filestore/$$PGDATABASE && echo 'create database' && createdb -T template0 $$PGDATABASE && echo 'restore database' && pg_restore -d $$PGDATABASE $$SRC/{{ odoo_prod.db }}.pgdump ; psql -a -f /tmp/post-restore.sql $$PGDATABASE"]
+{% else %}
+        command: [sh, -c, "psql -a -f /tmp/pre-restore.sql postgres ; echo 'remove existing dir' && rm -rf /mnt/backup/src/odoo/filestore/$$PGDATABASE && restore && echo 'move repo to final dest' && mv /mnt/backup/src/odoo/filestore/{{ hostvars[item.prod_inv_name].odoo_prod.db }} /mnt/backup/src/odoo/filestore/$$PGDATABASE && echo 'create database' && createdb -T template0 $$PGDATABASE && echo 'restore database' && pg_restore -d $$PGDATABASE $$SRC/{{ hostvars[item.prod_inv_name].odoo_prod.db }}.pgdump ; psql -a -f /tmp/post-restore.sql $$PGDATABASE"]
+{% endif %}
+
+networks:
+    {{ item.dir }}_default:
+        external: true
+    public:
+        driver_opts:
+            encrypted: 1
+
+volumes:
+    {{ item.dir }}_filestore:
+        external: true

@@ -1,0 +1,190 @@
+---
+#--------------------------------------------------
+# Whitelists section
+#--------------------------------------------------
+
+- name: copy docker compose for whitelists
+  template:
+    src: whitelists.yaml.j2
+    dest: "/home/docker/whitelists.yaml"
+    owner: root
+    group: root
+    mode: '0400'
+  notify: start odoo docker whitelists
+  when: inventory_hostname in groups['docker_secure'] and whitelisted_urls is defined
+
+#--------------------------------------------------
+# Test Docker section
+#--------------------------------------------------
+- name: create Odoo docker structure on server in /home/docker/xxx
+  file:
+    name: /home/docker/{{ item.dir }}/odoo/private
+    state: directory
+    owner: root
+    group: root
+  with_items: '{{ odoo_nonprod_instances | default([]) }}'
+  loop_control:
+    label: '{{ item.name }}'
+
+- name: copy update scripts to be run during build
+  template:
+    src: "fetch_repos"
+    dest: "/home/docker/{{ item.dir }}/odoo/private/"
+    owner: root
+    group: root
+    mode: '0750'
+  with_items: '{{ odoo_nonprod_instances | default([]) }}'
+  loop_control:
+    label: '{{ item.name }}'
+  notify:
+    - pull odoo docker ML image
+    - pull odoo docker image
+    - build {{ item.name }} docker
+
+- name: copy update scripts to be run during build
+  template:
+    src: "fetch_repos_addons"
+    dest: "/home/docker/{{ item.dir }}/odoo/private/"
+    owner: root
+    group: root
+    mode: '0750'
+  with_items: '{{ odoo_nonprod_instances | default([]) }}'
+  loop_control:
+    label: '{{ item.name }}'
+  notify:
+    - pull odoo docker ML image
+    - pull odoo docker image
+    - build {{ item.name }} docker
+
+- name: set repos.yaml variables from template
+  template:
+    src: "repos.yaml.j2"
+    dest: "/home/docker/{{ item.dir }}/odoo/private/repos.yaml"
+    owner: root
+    group: root
+    mode: '0644'
+  with_items: '{{ odoo_nonprod_instances | default([]) }}'
+  loop_control:
+    label: '{{ item.name }}'
+  notify:
+    - pull odoo docker ML image
+    - pull odoo docker image
+    - build {{ item.name }} docker
+
+- name: set repos-addons.yaml variables from template
+  template:
+    src: "repos-addons.yaml.j2"
+    dest: "/home/docker/{{ item.dir }}/odoo/private/repos-addons.yaml"
+    owner: root
+    group: root
+    mode: '0644'
+  with_items: '{{ odoo_nonprod_instances | default([]) }}'
+  loop_control:
+    label: '{{ item.name }}'
+  notify:
+    - pull odoo docker ML image
+    - pull odoo docker image
+    - build {{ item.name }} docker
+
+- name: copy odoo.conf file
+  template:
+    src: odoo.conf.j2
+    dest: "/home/docker/{{ item.dir }}/odoo/odoo.conf"
+    owner: root
+    group: root
+    mode: '0600'
+  with_items: '{{ odoo_nonprod_instances | default([]) }}'
+  loop_control:
+    label: '{{ item.name }}'
+  notify: build {{ item.name }} docker
+
+- name: copy private Git ssh keys file
+  copy:
+    content: "{{ git_private_keys }}"
+    dest: "/home/docker/{{ item.dir }}/odoo/id_rsa"
+    owner: root
+    group: root
+    mode: '0400'
+  when: git_private_keys is defined
+  with_items: '{{ odoo_nonprod_instances | default([]) }}'
+  loop_control:
+    label: '{{ item.name }}'
+  notify: build {{ item.name }} docker
+
+- name: copy Dockerfile to retrieve private repos and extra OCA ones
+  template:
+    src: Dockerfile.j2
+    dest: "/home/docker/{{ item.dir }}/odoo/Dockerfile"
+    owner: root
+    group: root
+    mode: '0644'
+  with_items: '{{ odoo_nonprod_instances | default([]) }}'
+  loop_control:
+    label: '{{ item.name }}'
+  notify:
+    - pull odoo docker ML image
+    - pull odoo docker image
+    - build {{ item.name }} docker
+
+- name: copy test docker compose service
+  template:
+    src: test.yaml.j2
+    dest: /home/docker/{{ item.dir }}/docker-compose.yml
+    owner: root
+    group: root
+    mode: '0400'
+  with_items: '{{ odoo_nonprod_instances | default([]) }}'
+  loop_control:
+    label: '{{ item.name }}'
+  notify: start {{ item.name }} docker
+
+#--------------------------------------------------
+# Backup section
+#--------------------------------------------------
+- name: copy sql script to be run before restoring db from prod
+  template:
+    src: pre_restore-odootest.sql.j2
+    dest: /home/docker/backups/pre_restore-{{ item.name }}.sql
+    owner: root
+    group: root
+    mode: '0444'
+  when: inventory_hostname in groups.maintenance_contract
+  with_items: '{{ odoo_nonprod_instances | default([]) }}'
+  loop_control:
+    label: '{{ item.name }}'
+
+- name: copy sql script to be run after restoring db from prod
+  template:
+    src: post_restore-odootest.sql.j2
+    dest: /home/docker/backups/post_restore-{{ item.name }}.sql
+    owner: root
+    group: root
+    mode: '0444'
+  when: inventory_hostname in groups.maintenance_contract
+  with_items: '{{ odoo_nonprod_instances | default([]) }}'
+  loop_control:
+    label: '{{ item.name }}'
+
+- name: copy compose file to restore db from prod
+  template:
+    src: restore-odootest.yaml.j2
+    dest: /home/docker/backups/restore-{{ item.name }}.yaml
+    owner: root
+    group: root
+    mode: '0400'
+  when: inventory_hostname in groups.maintenance_contract
+  with_items: '{{ odoo_nonprod_instances | default([]) }}'
+  loop_control:
+    label: '{{ item.name }}'
+
+- name: copy compose file to restore2 db from prod
+  template:
+    src: restore2-odootest.yaml.j2
+    dest: /home/docker/backups/restore2-{{ item.name }}.yaml
+    owner: root
+    group: root
+    mode: '0400'
+  when: inventory_hostname in groups.maintenance_contract
+  with_items: '{{ odoo_nonprod_instances | default([]) }}'
+  loop_control:
+    label: '{{ item.name }}'

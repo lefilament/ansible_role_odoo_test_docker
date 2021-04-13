@@ -1,0 +1,27 @@
+version: "2.1"
+services:
+{% for url in whitelisted_urls %}
+
+    {{ url }}:
+        image: tecnativa/whitelist
+        environment:
+            TARGET: "{{ url }}"
+            PRE_RESOLVE: 1
+        labels:
+            co.elastic.logs/enabled: "false"
+        networks:
+            proxy:
+                aliases:
+                    - "{{ url }}"
+            public:
+        restart: unless-stopped
+{% endfor %}
+
+networks:
+    proxy:
+        internal: true
+        driver_opts:
+            encrypted: 1
+    public:
+        driver_opts:
+            encrypted: 1
